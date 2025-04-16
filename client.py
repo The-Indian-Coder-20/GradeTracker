@@ -6,57 +6,60 @@ import random
 import string
 
 class ChatClient:
-    def __init__(self, HOST="172.17.4.254", PORT=8080):
+    def __init__(self, HOST="219.104.138.136", PORT=8080):
         self.HOST = HOST
         self.PORT = PORT
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-        self.font_size = 12
+        self.font_size = 14
         self.font_family = "Helvetica"
         self.widgets = []
+
+        self.clients = []
+        self.client_names = {}
+        self.online_servers = {}
 
         self.bg_color = "#ffffff"
         self.fg_color = "#000000"
 
         self.emoticon_dict = {
-            ":)": "😊",
-            ":(": "☹️",
-            ":D": "😄",
-            ":P": "😜",
-            ";)": "😉",
-            ":heart:": "❤️",
-            ":star:": "⭐",
-            ":fire:": "🔥",
-            ":poop:": "💩",
-            ":thumbsup:": "👍",
-            ":100:": "💯",
-            ":cry:": "😢",
-            ":smile:": "😄",
-            ":laugh:": "😂",
-            ":angry:": "😠",
-            ":cool:": "😎"
+            ":)": "😊", ":(": "☹️", ":D": "😄", ":P": "😜", ";)": "😉",
+            ":heart:": "❤️", ":star:": "⭐", ":fire:": "🔥", ":poop:": "💩",
+            ":thumbsup:": "👍", ":100:": "💯", ":cry:": "😢", ":smile:": "😄",
+            ":laugh:": "😂", ":angry:": "😠", ":cool:": "😎"
         }
 
         self.show_main_menu()
 
+    def get_local_ip(self):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+            return ip
+        except:
+            return "127.0.0.1"
+
     def exit_application(self):
-        self.root.quit()  # This will stop the Tkinter event loop and close the window
-        self.root.destroy()  # Destroys the root window and releases resources
-        exit()  # Ensures that the program terminates
+        self.root.quit()
+        self.root.destroy()
+        exit()
 
     def show_main_menu(self):
         self.root = tk.Tk()
         self.root.title("🌀 Rogue Chat - Main Menu")
-        self.root.geometry("360x320")  # Increased height to accommodate Exit button
+        self.root.geometry("360x320")
         self.root.resizable(False, False)
         self.update_colors(self.root)
 
-        label = tk.Label(self.root, text="Rogue Chat", font=(self.font_family, self.font_size + 6, "bold"))
+        # Title label is not affected by font size change
+        label = tk.Label(self.root, text="Rogue Chat", font=(self.font_family, 20, "bold"))
         label.pack(pady=30)
         self.widgets.append(label)
 
         chat_btn = tk.Button(self.root, text="💬 Chat Servers", font=(self.font_family, self.font_size + 2),
-                             width=20, height=2, command=self.launch_chat)
+                             width=20, height=2, command=self.show_server_list)
         chat_btn.pack(pady=10)
         self.widgets.append(chat_btn)
 
@@ -71,6 +74,12 @@ class ChatClient:
         self.widgets.append(exit_btn)
 
         self.root.mainloop()
+
+    def update_font_size(self, value):
+        self.font_size = int(value)
+        for widget in self.widgets:
+            if isinstance(widget, (tk.Label, tk.Button, tk.Text, tk.Scale)):
+                widget.configure(font=(self.font_family, self.font_size))
 
     def show_settings(self):
         settings_window = tk.Toplevel(self.root)
@@ -90,12 +99,6 @@ class ChatClient:
         font_slider.pack()
         self.widgets.append(font_slider)
 
-    def update_font_size(self, value):
-        self.font_size = int(value)
-        for widget in self.widgets:
-            if isinstance(widget, (tk.Label, tk.Button, tk.Text, tk.Scale)):
-                widget.configure(font=(self.font_family, self.font_size))
-
     def update_colors(self, parent):
         parent.configure(bg=self.bg_color)
         for widget in parent.winfo_children():
@@ -109,14 +112,210 @@ class ChatClient:
             except:
                 pass
 
-    def launch_chat(self):
+    def discover_servers(self):
+        def listen():
+            udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            udp_socket.bind(("", 54545))
+            udp_socket.settimeout(1)
+
+            while self.server_listening:
+                try:
+                    data, addr = udp_socket.recvfrom(1024)
+                    info = data.decode().split("|")
+                    if info[0] == "RogueServer":
+                        name, ip, port = info[1], info[2], int(info[3])
+                        self.online_servers[(ip, port)] = name
+                        self.update_server_list_ui()
+                except socket.timeout:
+                    continue
+                except:
+                    break
+
+        self.server_listening = True
+        threading.Thread(target=listen, daemon=True).start()
+
+    def show_server_list(self):
         self.root.withdraw()
+        self.server_window = tk.Toplevel()
+        self.server_window.title("Select Chat Server")
+        self.server_window.geometry("400x400")
+        self.update_colors(self.server_window)
+
+        create_btn = tk.Button(self.server_window, text="➕ Create Server", font=(self.font_family, self.font_size),
+                               command=self.create_server)
+        create_btn.pack(pady=(10, 5))
+
+        refresh_btn = tk.Button(self.server_window, text="🔄 Refresh", font=(self.font_family, self.font_size),
+                                command=self.refresh_server_list)
+        refresh_btn.pack(pady=(0, 10))
+
+        self.server_list_frame = tk.Frame(self.server_window)
+        self.server_list_frame.pack(fill="both", expand=True)
+        self.update_colors(self.server_list_frame)
+
+        back_btn = tk.Button(self.server_window, text="Back to Main Menu", font=(self.font_family, self.font_size),
+                             command=self.back_to_main_menu_from_server_list)
+        back_btn.pack(pady=10)
+
+        self.refresh_server_list()
+        self.discover_servers()
+
+    def refresh_server_list(self):
+        for widget in self.server_list_frame.winfo_children():
+            widget.destroy()
+
+        servers = self.discover_servers()
+
+        if not servers:
+            label = tk.Label(self.server_list_frame, text="No available servers", font=(self.font_family, self.font_size))
+            label.pack(pady=20)
+        else:
+            for name, host, port in servers:
+                btn = tk.Button(self.server_list_frame, text=f"{name} ({host}:{port})",
+                                font=(self.font_family, self.font_size),
+                                command=lambda h=host, p=port: self.launch_chat(h, p))
+                btn.pack(pady=5, fill="x", padx=20)
+
+    def is_port_in_use(self, PORT, HOST):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind((HOST, PORT))
+                return False
+            except:
+                messagebox.showinfo("Port in use", "Port is already in use, assigning next available port...")
+                return True
+
+    def create_server(self):
+        PORT = simpledialog.askinteger("Port", "Enter the port you would like to use:")
+        NAME = simpledialog.askstring("Server Name", "Enter the desired name for your server:")
+        HOST = self.get_local_ip()
+
+        while self.is_port_in_use(PORT, HOST):
+            PORT += 1
+
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server_socket.bind((HOST, PORT))
+        server_socket.listen()
+        print(f"Server is running on {HOST}:{PORT}")
+
+        def start_discovery_responder(name, port):
+            def responder():
+                udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                message = f"RogueServer|{name}|{HOST}|{port}"
+                while True:
+                    try:
+                        udp_socket.sendto(message.encode(), ("255.255.255.255", 54545))
+                    except:
+                        break
+
+        def broadcast(client_name, data, sender_socket):
+            for client in self.clients:
+                if client != sender_socket:
+                    try:
+                        client.sendall(f"<{client_name}> {data}".encode())
+                    except:
+                        client.remove(client)
+                else:
+                    try:
+                        client.sendall(f"<Me> {data}".encode())
+                    except:
+                        client.remove(client)
+
+        def handle_client(client_socket, address):
+            print(f"New connection from IP: {address}")
+            client_name = None
+
+            while True:
+                try:
+                    temp_name = client_socket.recv(1024).decode().strip()
+                except:
+                    return
+                if temp_name in self.client_names.values():
+                    client_socket.send("F".encode())
+                else:
+                    client_name = temp_name
+                    client_socket.send("T".encode())
+                    welcome = f"'{client_name}' has joined the chat!"
+                    print(welcome)
+                    for client in self.clients:
+                        try:
+                            client.sendall(welcome.encode())
+                        except:
+                            client.remove(client)
+                    self.clients.append(client_socket)
+                    self.client_names[client_socket] = client_name
+                    print(self.client_names)
+                    break
+
+            try:
+                while True:
+                    data = client_socket.recv(1024).decode()
+                    if data.lower() == "exit":
+                        break
+                    broadcast(client_name, data, client_socket)
+            except:
+                pass
+            finally:
+                print(f"{client_name} has disconnected...")
+                if client_socket == self.clients[0]:
+                    for client in self.clients:
+                        try:
+                            client.close()
+                        except:
+                            pass
+                    server_socket.close()
+                    print("\nServer has shut down.")
+                elif client_socket in self.clients:
+                    self.clients.remove(client_socket)
+                    for client in self.clients:
+                        try:
+                            client.sendall(f"{client_name} has rage quit, apparently.".encode())
+                        except:
+                            client.remove(client)
+                    client_socket.close()
+                    del self.client_names[client_socket]
+
+        def server_thread():
+            try:
+                while True:
+                    client_socket, address = server_socket.accept()
+                    threading.Thread(target=handle_client, args=(client_socket, address), daemon=True).start()
+            except Exception as e:
+                print(f"Server error: {e}")
+            finally:
+                for client in self.clients:
+                    try:
+                        client.close()
+                    except:
+                        pass
+                server_socket.close()
+                print("\nServer has shut down.")
+
+        # Start the server thread
+        threading.Thread(target=server_thread, daemon=True).start()
+
+        start_discovery_responder(NAME, PORT)
+
+        # Launch host's chat window immediately
+        self.launch_chat(HOST, PORT)
+
+    def back_to_main_menu_from_server_list(self):
+        self.server_window.destroy()
+        self.root.deiconify()
+
+    def launch_chat(self, host, port):
+        self.HOST = host
+        self.PORT = port
+        self.server_window.withdraw()
 
         try:
             self.client_socket.connect((self.HOST, self.PORT))
         except Exception as e:
-            messagebox.showerror("Connection Error", "Could not connect to server:\n Server is either broken or online. \n Try again later!")
-            self.root.deiconify()
+            messagebox.showerror("Connection Error", f"Could not connect to server.\nServer is either broken or not online.\nTry again later!\n\nReason:\n{e}")
+            self.server_window.deiconify()
             return
 
         while True:
@@ -136,14 +335,14 @@ class ChatClient:
                 self.client_socket.sendall(alias.encode())
             except Exception as e:
                 messagebox.showerror("Connection Error", f"Failed to send alias:\n{e}")
-                self.root.deiconify()
+                self.server_window.deiconify()
                 return
 
             try:
                 choice = self.client_socket.recv(1024).decode()
             except Exception as e:
                 messagebox.showerror("Connection Error", f"Failed to receive response from server:\n{e}")
-                self.root.deiconify()
+                self.server_window.deiconify()
                 return
 
             if choice == "F":
@@ -154,7 +353,7 @@ class ChatClient:
                 break
 
         self.chat_window = tk.Toplevel()
-        self.chat_window.title(f"Rogue Chat [{alias}]")
+        self.chat_window.title(f"Rogue Chat [{alias}] | IP: {self.get_local_ip()}")
         self.chat_window.geometry("600x400")
         self.chat_window.rowconfigure(0, weight=1)
         self.chat_window.rowconfigure(1, weight=0)
@@ -255,7 +454,7 @@ class ChatClient:
 
     def display_message(self, msg):
         if hasattr(self, 'chat_display'):
-            msg = self.replace_emoticons(msg)  # Replace emoticons with emojis
+            msg = self.replace_emoticons(msg)
             self.chat_display.configure(state="normal")
             self.chat_display.insert("end", msg + "\n")
             self.chat_display.configure(state="disabled")

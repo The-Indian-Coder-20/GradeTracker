@@ -1,3 +1,4 @@
+"""
 import socket, threading
 
 clients = []
@@ -82,3 +83,30 @@ def start_server(HOST = "172.17.4.254", PORT = 8080):
 
 if __name__ == '__main__':
     start_server()
+"""
+
+import socket
+import threading
+
+def server_discovery_listener(PORT=1025, DISCOVERY_PORT=1025):
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server_socket.bind(("", DISCOVERY_PORT))  # Listening for discovery requests
+
+    print(f"Server discovery listener started on port {DISCOVERY_PORT}")
+
+    while True:
+        try:
+            # Listen for a discovery request (broadcast)
+            message, addr = server_socket.recvfrom(1024)
+
+            if message.decode() == "DISCOVER_SERVER":
+                # Respond with server details
+                server_info = f"{socket.gethostbyname(socket.gethostname())}:{PORT}"
+                server_socket.sendto(server_info.encode(), addr)
+                print(f"Sent server info {server_info} to {addr}")
+        except Exception as e:
+            print(f"Error during server discovery: {e}")
+
+# Start the server discovery listener in a thread
+threading.Thread(target=server_discovery_listener, daemon=True).start()
