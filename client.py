@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import font, simpledialog, messagebox
 import random
 import string
+import time
 
 class ChatClient:
     def __init__(self, HOST="219.104.138.136", PORT=8080):
@@ -17,10 +18,12 @@ class ChatClient:
 
         self.clients = []
         self.client_names = {}
-        self.online_servers = {}
+        self.online_servers = []
 
         self.bg_color = "#ffffff"
         self.fg_color = "#000000"
+
+        self.connected = False  # Track connection status
 
         self.emoticon_dict = {
             ":)": "😊", ":(": "☹️", ":D": "😄", ":P": "😜", ";)": "😉",
@@ -125,13 +128,18 @@ class ChatClient:
                     info = data.decode().split("|")
                     if info[0] == "RogueServer":
                         name, ip, port = info[1], info[2], int(info[3])
-                        self.online_servers[(ip, port)] = name
-                        self.update_server_list_ui()
+                        server_entry = (name, ip, port)
+                        if server_entry not in self.online_servers:
+                            self.online_servers.append(server_entry)
+                            self.update_server_list_ui()
                 except socket.timeout:
                     continue
-                except:
+                except Exception as e:
+                    print(f"UDP listen error: {e}")
                     break
+            udp_socket.close()
 
+        self.online_servers = []  # Reset list each time
         self.server_listening = True
         threading.Thread(target=listen, daemon=True).start()
 
@@ -147,7 +155,7 @@ class ChatClient:
         create_btn.pack(pady=(10, 5))
 
         refresh_btn = tk.Button(self.server_window, text="🔄 Refresh", font=(self.font_family, self.font_size),
-                                command=self.refresh_server_list)
+                                command=self.update_server_list_ui)
         refresh_btn.pack(pady=(0, 10))
 
         self.server_list_frame = tk.Frame(self.server_window)
@@ -158,20 +166,19 @@ class ChatClient:
                              command=self.back_to_main_menu_from_server_list)
         back_btn.pack(pady=10)
 
-        self.refresh_server_list()
         self.discover_servers()
 
-    def refresh_server_list(self):
+    def update_server_list_ui(self):
+        # Clear current UI list
         for widget in self.server_list_frame.winfo_children():
             widget.destroy()
 
-        servers = self.discover_servers()
-
-        if not servers:
-            label = tk.Label(self.server_list_frame, text="No available servers", font=(self.font_family, self.font_size))
+        if not self.online_servers:
+            label = tk.Label(self.server_list_frame, text="No available servers",
+                             font=(self.font_family, self.font_size))
             label.pack(pady=20)
         else:
-            for name, host, port in servers:
+            for name, host, port in self.online_servers:
                 btn = tk.Button(self.server_list_frame, text=f"{name} ({host}:{port})",
                                 font=(self.font_family, self.font_size),
                                 command=lambda h=host, p=port: self.launch_chat(h, p))
@@ -198,18 +205,22 @@ class ChatClient:
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server_socket.bind((HOST, PORT))
         server_socket.listen()
-        print(f"Server is running on {HOST}:{PORT}")
+        print(f"RogueServer|{NAME}|{HOST}|{PORT}")
 
         def start_discovery_responder(name, port):
-            def responder():
+            def broadcast_loop():
                 udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
                 message = f"RogueServer|{name}|{HOST}|{port}"
                 while True:
                     try:
                         udp_socket.sendto(message.encode(), ("255.255.255.255", 54545))
-                    except:
+                        time.sleep(2)
+                    except Exception as e:
+                        print(f"Discovery broadcast error: {e}")
                         break
+
+            threading.Thread(target=broadcast_loop, daemon=True).start()
 
         def broadcast(client_name, data, sender_socket):
             for client in self.clients:
@@ -352,6 +363,8 @@ class ChatClient:
             else:
                 break
 
+        self.connected = True  # Set connection status
+
         self.chat_window = tk.Toplevel()
         self.chat_window.title(f"Rogue Chat [{alias}] | IP: {self.get_local_ip()}")
         self.chat_window.geometry("600x400")
@@ -431,6 +444,10 @@ class ChatClient:
         self.text_box.configure(height=wrapped_lines)
 
     def send_message(self):
+        if not self.connected:
+            self.display_message("⚠️ Cannot send: not connected to server.")
+            return
+
         message = self.text_box.get("1.0", "end-1c").strip()
         if message:
             try:
@@ -450,7 +467,12 @@ class ChatClient:
         except:
             self.display_message("\n⚠️ Connection closed.")
         finally:
+            self.connected = False
             self.client_socket.close()
+            self.display_message("⚠️ Server has disconnected. You can return to the main menu.")
+            # Enable the back button if it's disabled
+            if hasattr(self, "back_button"):
+                self.back_button.config(state="normal")
 
     def display_message(self, msg):
         if hasattr(self, 'chat_display'):
@@ -480,7 +502,11 @@ class ChatClient:
         self.text_box.insert("insert", emoji)
 
     def back_to_main_menu(self):
-        self.client_socket.sendall("exit".encode())
+        try:
+            if self.connected:
+                self.client_socket.sendall("exit".encode())
+        except:
+            pass  # Ignore if already closed
         self.chat_window.destroy()
         self.__init__()
 
