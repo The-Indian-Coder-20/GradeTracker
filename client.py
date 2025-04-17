@@ -7,9 +7,7 @@ import string
 import time
 
 class ChatClient:
-    def __init__(self, HOST="219.104.138.136", PORT=8080):
-        self.HOST = HOST
-        self.PORT = PORT
+    def __init__(self):
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         self.font_size = 14
@@ -131,6 +129,7 @@ class ChatClient:
                         server_entry = (name, ip, port)
                         if server_entry not in self.online_servers:
                             self.online_servers.append(server_entry)
+                            print("Added:", server_entry)
                             self.update_server_list_ui()
                 except socket.timeout:
                     continue
@@ -173,6 +172,8 @@ class ChatClient:
         for widget in self.server_list_frame.winfo_children():
             widget.destroy()
 
+        print(self.online_servers)
+
         if not self.online_servers:
             label = tk.Label(self.server_list_frame, text="No available servers",
                              font=(self.font_family, self.font_size))
@@ -195,13 +196,15 @@ class ChatClient:
 
     def create_server(self):
         PORT = simpledialog.askinteger("Port", "Enter the port you would like to use:")
-        NAME = simpledialog.askstring("Server Name", "Enter the desired name for your server:")
         HOST = self.get_local_ip()
 
         while self.is_port_in_use(PORT, HOST):
             PORT += 1
 
+        NAME = simpledialog.askstring("Server Name", "Enter the desired name for your server:")
+
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.online_servers.append((NAME, HOST, PORT))
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server_socket.bind((HOST, PORT))
         server_socket.listen()
@@ -209,12 +212,12 @@ class ChatClient:
 
         def start_discovery_responder(name, port):
             def broadcast_loop():
-                udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                self.udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
                 message = f"RogueServer|{name}|{HOST}|{port}"
                 while True:
                     try:
-                        udp_socket.sendto(message.encode(), ("255.255.255.255", 54545))
+                        self.udp_socket.sendto(message.encode(), ("255.255.255.255", 54545))
                         time.sleep(2)
                     except Exception as e:
                         print(f"Discovery broadcast error: {e}")
@@ -228,12 +231,14 @@ class ChatClient:
                     try:
                         client.sendall(f"<{client_name}> {data}".encode())
                     except:
-                        client.remove(client)
+                        self.clients.remove(client)
+                        del self.client_names[client]
                 else:
                     try:
                         client.sendall(f"<Me> {data}".encode())
                     except:
-                        client.remove(client)
+                        self.clients.remove(client)
+                        del self.client_names[client]
 
         def handle_client(client_socket, address):
             print(f"New connection from IP: {address}")
@@ -270,22 +275,26 @@ class ChatClient:
             except:
                 pass
             finally:
-                print(f"{client_name} has disconnected...")
+                print(f"\n{client_name} has disconnected...")
                 if client_socket == self.clients[0]:
                     for client in self.clients:
                         try:
                             client.close()
                         except:
                             pass
+                    self.online_servers.remove((NAME, HOST, PORT))
+                    print("Here", self.online_servers)
                     server_socket.close()
+                    self.udp_socket.close()
                     print("\nServer has shut down.")
+                    self.discover_servers()
                 elif client_socket in self.clients:
                     self.clients.remove(client_socket)
                     for client in self.clients:
                         try:
                             client.sendall(f"{client_name} has rage quit, apparently.".encode())
                         except:
-                            client.remove(client)
+                            self.clients.remove(client)
                     client_socket.close()
                     del self.client_names[client_socket]
 
@@ -302,8 +311,12 @@ class ChatClient:
                         client.close()
                     except:
                         pass
+                if (NAME, HOST, PORT) in self.online_servers:
+                    self.online_servers.remove((NAME, HOST, PORT))
+                print("Here", self.online_servers)
                 server_socket.close()
                 print("\nServer has shut down.")
+                self.discover_servers()
 
         # Start the server thread
         threading.Thread(target=server_thread, daemon=True).start()
