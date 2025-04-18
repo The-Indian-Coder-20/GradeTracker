@@ -31,7 +31,6 @@ class ChatClient:
         }
 
         self.show_main_menu()
-        self.owner = False
 
     def get_local_ip(self):
         try:
@@ -197,16 +196,17 @@ class ChatClient:
 
     def create_server(self):
         PORT = simpledialog.askinteger("Port", "Enter the port you would like to use:")
+        if PORT is None:
+            return
+
+        NAME = simpledialog.askstring("Server Name", "Enter the desired name for your server:")
+        if NAME is None:
+            return
+
         HOST = self.get_local_ip()
 
         while self.is_port_in_use(PORT, HOST):
             PORT += 1
-
-        NAME = simpledialog.askstring("Server Name", "Enter the desired name for your server:")
-
-        self.port = PORT
-        self.host = HOST
-        self.name = NAME
 
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.online_servers.append((NAME, HOST, PORT))
@@ -214,8 +214,6 @@ class ChatClient:
         server_socket.bind((HOST, PORT))
         server_socket.listen()
         print(f"RogueServer|{NAME}|{HOST}|{PORT}")
-
-        self.owner = True
 
         def start_discovery_responder(name, port):
             def broadcast_loop():
@@ -488,8 +486,8 @@ class ChatClient:
             self.display_message("\n⚠️ Connection closed.")
         finally:
             self.connected = False
-            self.client_socket.close()
             self.display_message("⚠️ Server has disconnected. You can return to the main menu.")
+            self.client_socket.close()
             # Enable the back button if it's disabled
             if hasattr(self, "back_button"):
                 self.back_button.config(state="normal")
@@ -522,7 +520,6 @@ class ChatClient:
         self.text_box.insert("insert", emoji)
 
     def back_to_main_menu(self):
-        
         try:
             if self.connected:
                 self.client_socket.sendall("exit".encode())
