@@ -115,30 +115,42 @@ class ChatClient:
 
     def discover_servers(self):
         def listen():
-            udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            udp_socket.bind(("", 54545))
-            udp_socket.settimeout(1)
+            self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.udp_socket.bind(("", 54545))  # Bind to any available interface on port 54545
+            self.udp_socket.settimeout(1)
 
             while self.server_listening:
                 try:
-                    data, addr = udp_socket.recvfrom(1024)
+                    data, addr = self.udp_socket.recvfrom(1024)
                     info = data.decode().split("|")
                     if info[0] == "RogueServer":
                         name, ip, port = info[1], info[2], int(info[3])
                         server_entry = (name, ip, port)
+
+                        # Add to online_servers only if it's not already there
                         if server_entry not in self.online_servers:
                             self.online_servers.append(server_entry)
-                            print("Added:", server_entry)
+                            print(f"Added: {server_entry}")
+
+                            # Update the UI (could be improved for optimization)
                             self.update_server_list_ui()
+
                 except socket.timeout:
+                    # Optionally log that we're still listening, helpful for debugging
+                    print("Waiting for server broadcast...")
                     continue
+
                 except Exception as e:
                     print(f"UDP listen error: {e}")
                     break
-            udp_socket.close()
 
-        self.online_servers = []  # Reset list each time
+            self.udp_socket.close()
+
+        # Ensure the online_servers list doesn't get reset if it's already populated
+        if not hasattr(self, 'online_servers'):
+            self.online_servers = []  # Initialize only once
+
         self.server_listening = True
         threading.Thread(target=listen, daemon=True).start()
 
@@ -203,26 +215,25 @@ class ChatClient:
         if NAME is None:
             return
 
-        HOST = self.get_local_ip()
+        HOST = "0.0.0.0"
 
         while self.is_port_in_use(PORT, HOST):
             PORT += 1
 
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.online_servers.append((NAME, HOST, PORT))
+        self.online_servers.append((NAME, self.get_local_ip(), PORT))
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server_socket.bind((HOST, PORT))
         server_socket.listen()
-        print(f"RogueServer|{NAME}|{HOST}|{PORT}")
+        print(f"RogueServer|{NAME}|{self.get_local_ip()}|{PORT}")
 
         def start_discovery_responder(name, port):
             def broadcast_loop():
-                self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 self.udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-                message = f"RogueServer|{name}|{HOST}|{port}"
+                message = f"RogueServer|{name}|{self.get_local_ip()}|{port}"
                 while True:
                     try:
-                        self.udp_socket.sendto(message.encode(), ("255.255.255.255", 54545))
+                        self.udp_socket.sendto(message.encode(), ("<broadcast>", 54545))
                         time.sleep(2)
                     except Exception as e:
                         print(f"Discovery broadcast error: {e}")
