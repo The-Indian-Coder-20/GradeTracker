@@ -5,6 +5,7 @@ from tkinter import font, simpledialog, messagebox
 import random
 import string
 import time
+import sys
 
 class ChatClient:
     def __init__(self):
@@ -45,6 +46,7 @@ class ChatClient:
     def exit_application(self):
         self.root.quit()
         self.root.destroy()
+        sys.exit(0)
         exit()
 
     def show_main_menu(self):
@@ -138,7 +140,6 @@ class ChatClient:
 
                 except socket.timeout:
                     # Optionally log that we're still listening, helpful for debugging
-                    print("Waiting for server broadcast...")
                     continue
 
                 except Exception as e:
@@ -299,7 +300,7 @@ class ChatClient:
                             client.close()
                         except:
                             pass
-                    self.online_servers.remove((NAME, HOST, PORT))
+                    self.online_servers.remove((NAME, self.get_local_ip(), PORT))
                     print("Here", self.online_servers)
                     server_socket.close()
                     self.udp_socket.close()
@@ -328,8 +329,8 @@ class ChatClient:
                         client.close()
                     except:
                         pass
-                if (NAME, HOST, PORT) in self.online_servers:
-                    self.online_servers.remove((NAME, HOST, PORT))
+                if (NAME, self.get_local_ip(), PORT) in self.online_servers:
+                    self.online_servers.remove((NAME, self.get_local_ip(), PORT))
                 print("Here", self.online_servers)
                 server_socket.close()
                 print("\nServer has shut down.")
