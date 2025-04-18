@@ -115,14 +115,14 @@ class ChatClient:
 
     def discover_servers(self):
         def listen():
-            self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self.udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.udp_socket.bind(("", 54545))  # Bind to any available interface on port 54545
-            self.udp_socket.settimeout(1)
+            udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            udp_socket.bind(("", 54545))  # Bind to any available interface on port 54545
+            udp_socket.settimeout(1)
 
             while self.server_listening:
                 try:
-                    data, addr = self.udp_socket.recvfrom(1024)
+                    data, addr = udp_socket.recvfrom(1024)
                     info = data.decode().split("|")
                     if info[0] == "RogueServer":
                         name, ip, port = info[1], info[2], int(info[3])
@@ -145,7 +145,7 @@ class ChatClient:
                     print(f"UDP listen error: {e}")
                     break
 
-            self.udp_socket.close()
+            udp_socket.close()
 
         # Ensure the online_servers list doesn't get reset if it's already populated
         if not hasattr(self, 'online_servers'):
@@ -229,6 +229,7 @@ class ChatClient:
 
         def start_discovery_responder(name, port):
             def broadcast_loop():
+                self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 self.udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
                 message = f"RogueServer|{name}|{self.get_local_ip()}|{port}"
                 while True:
@@ -340,7 +341,7 @@ class ChatClient:
         start_discovery_responder(NAME, PORT)
 
         # Launch host's chat window immediately
-        self.launch_chat(HOST, PORT)
+        self.launch_chat(self.get_local_ip(), PORT)
 
     def back_to_main_menu_from_server_list(self):
         self.server_window.destroy()
