@@ -31,6 +31,7 @@ class ChatClient:
         }
 
         self.show_main_menu()
+        self.owner = False
 
     def get_local_ip(self):
         try:
@@ -203,12 +204,18 @@ class ChatClient:
 
         NAME = simpledialog.askstring("Server Name", "Enter the desired name for your server:")
 
+        self.port = PORT
+        self.host = HOST
+        self.name = NAME
+
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.online_servers.append((NAME, HOST, PORT))
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server_socket.bind((HOST, PORT))
         server_socket.listen()
         print(f"RogueServer|{NAME}|{HOST}|{PORT}")
+
+        self.owner = True
 
         def start_discovery_responder(name, port):
             def broadcast_loop():
@@ -515,6 +522,7 @@ class ChatClient:
         self.text_box.insert("insert", emoji)
 
     def back_to_main_menu(self):
+        
         try:
             if self.connected:
                 self.client_socket.sendall("exit".encode())
