@@ -6,10 +6,15 @@ import random
 import string
 import time
 import sys
+import fcntl
+import struct
 
 class ChatClient:
     def __init__(self):
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        self.clients_lock = threading.Lock()
+        self.names_lock = threading.Lock()
 
         self.font_size = 14
         self.font_family = "Helvetica"
@@ -47,7 +52,6 @@ class ChatClient:
         self.root.quit()
         self.root.destroy()
         sys.exit(0)
-        exit()
 
     def show_main_menu(self):
         self.root = tk.Tk()
@@ -180,7 +184,25 @@ class ChatClient:
 
         self.discover_servers()
 
+    def get_broadcast_address(self):
+        try:
+            interfaces = ['wlan0', 'eth0', 'en0']  # Common interfaces
+            for iface in interfaces:
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    packed = struct.pack('256s', iface[:15].encode('utf-8'))
+                    info = fcntl.ioctl(s.fileno(), 0x8919, packed)  # SIOCGIFBRDADDR
+                    return socket.inet_ntoa(info[20:24])
+                except IOError:
+                    continue
+            return "255.255.255.255"  # Fallback
+        except:
+            return "255.255.255.255"
+
     def update_server_list_ui(self):
+        self.server_window.after(0, self._update_ui)
+
+    def _update_ui(self):
         # Clear current UI list
         for widget in self.server_list_frame.winfo_children():
             widget.destroy()
@@ -220,13 +242,21 @@ class ChatClient:
 
         while self.is_port_in_use(PORT, HOST):
             PORT += 1
+            if PORT > 65535:
+                messagebox.showerror("Error", "No available port found.")
+                return
+
+        local_ip = self.get_local_ip()
 
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.online_servers.append((NAME, self.get_local_ip(), PORT))
+        self.online_servers.append((NAME, local_ip, PORT))
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server_socket.bind((HOST, PORT))
         server_socket.listen()
-        print(f"RogueServer|{NAME}|{self.get_local_ip()}|{PORT}")
+
+        broadcast_ip = self.get_broadcast_address()  # e.g., 192.168.1.255
+
+        print(f"RogueServer|{NAME}|{local_ip}|{PORT}")
 
         def start_discovery_responder(name, port):
             def broadcast_loop():
@@ -236,6 +266,7 @@ class ChatClient:
                 while True:
                     try:
                         self.udp_socket.sendto(message.encode(), ("<broadcast>", 54545))
+                        print("Broadcasting discovery message:", message)
                         time.sleep(2)
                     except Exception as e:
                         print(f"Discovery broadcast error: {e}")
@@ -244,23 +275,23 @@ class ChatClient:
             threading.Thread(target=broadcast_loop, daemon=True).start()
 
         def broadcast(client_name, data, sender_socket):
-            for client in self.clients:
-                if client != sender_socket:
-                    try:
-                        client.sendall(f"<{client_name}> {data}".encode())
-                    except:
-                        self.clients.remove(client)
-                        del self.client_names[client]
-                else:
-                    try:
-                        client.sendall(f"<Me> {data}".encode())
-                    except:
-                        self.clients.remove(client)
+            for client in self.clients.copy():
+                try:
+                    label = "<Me>" if client == sender_socket else f"<{client_name}>"
+                    client.sendall(f"{label} {data}".encode())
+                except:
+                    self.clients.remove(client)
+                    if client in self.client_names:
                         del self.client_names[client]
 
         def handle_client(client_socket, address):
             print(f"New connection from IP: {address}")
             client_name = None
+
+            with self.clients_lock:
+                self.clients.append(client_socket)
+            with self.names_lock:
+                self.client_names[client_socket] = client_name
 
             while True:
                 try:
@@ -344,8 +375,15 @@ class ChatClient:
         # Launch host's chat window immediately
         self.launch_chat(self.get_local_ip(), PORT)
 
-    def back_to_main_menu_from_server_list(self):
-        self.server_window.destroy()
+    def back_to_main_menu(self):
+        if self.connected:
+            try:
+                self.client_socket.sendall("exit".encode())
+                self.client_socket.close()
+            except:
+                pass
+            self.connected = False
+        self.chat_window.destroy()
         self.root.deiconify()
 
     def launch_chat(self, host, port):
@@ -354,6 +392,7 @@ class ChatClient:
         self.server_window.withdraw()
 
         try:
+            self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # New socket each time
             self.client_socket.connect((self.HOST, self.PORT))
         except Exception as e:
             messagebox.showerror("Connection Error", f"Could not connect to server.\nServer is either broken or not online.\nTry again later!\n\nReason:\n{e}")

@@ -83,7 +83,7 @@ def start_server(HOST = "172.17.4.254", PORT = 8080):
 
 if __name__ == '__main__':
     start_server()
-"""
+
 
 import socket
 import threading
@@ -110,3 +110,19 @@ def server_discovery_listener(PORT=1025, DISCOVERY_PORT=1025):
 
 # Start the server discovery listener in a thread
 threading.Thread(target=server_discovery_listener, daemon=True).start()
+
+if __name__ == '__main__':
+    server_discovery_listener()
+"""
+
+import socket
+
+HOST = "172.17.4.193"  # The server's hostname or IP address
+PORT = 65432  # The port used by the server
+
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+    s.connect((HOST, PORT))
+    s.sendall(b"Hello, world")
+    data = s.recv(1024)
+
+print(f"Received {data!r}")
