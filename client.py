@@ -57,13 +57,14 @@ class StudyAppClient:
         #Init all functions that need to be called when the program is run
         self.ExistingCategories()
         self.MainMenuWindow()
-    #Functions that close windows and popups
+    #Function that closes all open windows
     def WindowCloser(self):
         for window in self.openWindows:
             try:
                 window.destroy()
             except Exception as e:
                 print(f"Error has occurred:\n\n{e}")
+    #Function that closes all open popups
     def PopupCloser(self):
         for popup in self.openPopups:
             try:
@@ -76,20 +77,22 @@ class StudyAppClient:
         self.categoryList = self.existingCategories_df["Category"].tolist()
     #Function to create a new window
     def NewWindow(self, windowName):
-        print(self.openWindows)
         # Destroys old window
         self.WindowCloser()
-        #Clears the open windows list
+        #Clears the open windows list and withdraws the main menu page
         self.openWindows.clear()
+        self.mainMenu.withdraw()
         #Spawns new window and sets the position on screen, title, and makes it resizable
-        self.newWindow = tk.Tk()
+        self.newWindow = tk.Toplevel(self.mainMenu)
         self.newWindow.geometry("+%d+%d" % (self.screenMiddleX,self.screenMiddleY))
         self.newWindow.title(windowName)
         self.newWindow.resizable(True, True)
     #Function to create a new popup window
     def NewPopupWindow(self, windowName):
+        #Closes all existing popup windows (if there are any, which there shouldn't)
+        self.PopupCloser()
         # Spawns new window and sets the position on screen, title, and makes it resizable
-        self.newPopupWindow = tk.Tk()
+        self.newPopupWindow = tk.Toplevel()
         self.newPopupWindow.geometry("+%d+%d" % (self.screenMiddleX, self.screenMiddleY))
         self.newPopupWindow.title(windowName)
         self.newPopupWindow.resizable(False, False)
@@ -99,14 +102,8 @@ class StudyAppClient:
         self.buttonFont = font.Font(family="Poppins", size=18, weight="bold")
     #Function to create the main menu window
     def MainMenuWindow(self):
-        for window in self.openWindows:
-            try:
-                window.destroy()
-            except:
-                pass
-        self.openWindows.clear()
+        #Opens the mainmenu window
         self.mainMenu = tk.Tk()
-        self.openWindows.append(self.mainMenu)
         self.mainMenu.title("StudyApp")
         self.mainMenu.geometry(f"{self.windowWidth}x{self.windowHeight}+{self.screenMiddleX}+{self.screenMiddleY}")
         self.mainMenu.resizable(True, True)
@@ -127,6 +124,14 @@ class StudyAppClient:
         self.exitButton.pack(pady=10)
 
         self.mainMenu.mainloop()
+    #Function to return and open the main menu window again
+    def ReturnToMainMenu(self):
+        #Closes all currently open windows
+        self.WindowCloser()
+        #Clear the currently open windows list
+        self.openWindows.clear()
+        #Reopens the main menu window
+        self.mainMenu.deiconify()
     #Function to create the dashboard window
     def DashboardWindow(self):
         #Init page
@@ -161,20 +166,23 @@ class StudyAppClient:
             self.CategoriesWindowListUpdate(self.categoriesListFrame)
         except Exception:
             messagebox.showerror("Loading error", "Categories could not be loaded!")
-            self.MainMenuWindow()
+            self.ReturnToMainMenu()
         #Add Categories button
-        addCategoriesButton = tk.Button(self.Categories, height=1, width=25, text="Add Category", font=self.buttonFont, border=5, command=lambda: self.AddCategories())
-        addCategoriesButton.grid(pady=1, padx=10, row=2)
+        addCategoriesButton = tk.Button(self.Categories, height=1, text="Add Category", font=self.buttonFont, border=5, command=lambda: self.AddCategories())
+        addCategoriesButton.grid(pady=1, padx=10, row=2, sticky="ew")
         #Back to main menu button
-        mainMenuButton = tk.Button(self.Categories, height=1, width=25, text="Back to main menu", font=self.buttonFont, border=5, command=lambda: self.MainMenuWindow())
-        mainMenuButton.grid(pady=(1, 15), padx=10, row=3)
+        mainMenuButton = tk.Button(self.Categories, height=1, text="Back to main menu", font=self.buttonFont, border=5, command=lambda: self.ReturnToMainMenu())
+        mainMenuButton.grid(pady=(1, 15), padx=10, row=3, sticky="ew")
+
+        self.Categories.protocol("WM_DELETE_WINDOW", self.ExitProgram)
     #Add category function definition to add new categories
     def AddCategories(self):
         try:
             #Gives the popup window a proper name
             self.NewPopupWindow("New Category")
-            #Change the var name to the name of the popup
+            #Change the var name to the name of the popup and appends it to the list
             self.AddCategoriesPopup = self.newPopupWindow
+            self.openPopups.append(self.AddCategoriesPopup)
             self.AddCategoriesPopup.geometry("300x120")
             #Input area for name of the category
             categoryName = tk.Entry(self.AddCategoriesPopup, width=30)
@@ -206,6 +214,8 @@ class StudyAppClient:
                     self.PopupCloser()
                     #Creates the new popup
                     messagebox.showwarning("Category already exists", "The category entered was not made as it already exists!")
+            def Cancel():
+                self.PopupCloser()
             #Submit and cancel button
             submitButton = tk.Button(self.AddCategoriesPopup, text="Submit", height=1, width=5, font=self.buttonFont, border=2, command=lambda: Submit())
             submitButton.grid(sticky="se", column=1, row=1)
@@ -236,8 +246,7 @@ class StudyAppClient:
         self.excelButton.grid(sticky="ew", row=0, column=0)
     #Function to exit the whole program
     def ExitProgram(self):
-        self.PopupCloser()
-        self.WindowCloser()
+        self.mainMenu.destroy()
 #Starts running the program
 if __name__ == "__main__":
     StudyAppClient()
