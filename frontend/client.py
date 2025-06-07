@@ -15,7 +15,17 @@ from matplotlib.figure import Figure
 from pathlib import Path
 #To open the excel file
 import os
+#Database
+from dotenv import load_dotenv
+from supabase import create_client, client
 
+#Loads the data from the .env file
+load_dotenv()
+
+#Database settings
+url: str = os.environ.get("SUPABASE_URL")
+key: str = os.environ.get("SUPABASE_KEY")
+Client = create_client(url, key)
 #Class containing client code
 class StudyAppClient:
     def __init__(self):
@@ -56,7 +66,7 @@ class StudyAppClient:
             print(f"Excel file '{self.dataStorageWorkbookName}' created!")
         #Init all functions that need to be called when the program is run
         self.ExistingCategories()
-        self.MainMenuWindow()
+        self.UserSignWindow()
     #Function that closes all open windows
     def WindowCloser(self):
         for window in self.openWindows:
@@ -81,9 +91,8 @@ class StudyAppClient:
         self.WindowCloser()
         #Clears the open windows list and withdraws the main menu page
         self.openWindows.clear()
-        self.mainMenu.withdraw()
         #Spawns new window and sets the position on screen, title, and makes it resizable
-        self.newWindow = tk.Toplevel(self.mainMenu)
+        self.newWindow = tk.Toplevel(self.startingWindow)
         self.newWindow.geometry("+%d+%d" % (self.screenMiddleX,self.screenMiddleY))
         self.newWindow.title(windowName)
         self.newWindow.resizable(True, True)
@@ -100,16 +109,65 @@ class StudyAppClient:
     def FontMaker(self):
         self.titleFont = font.Font(family="Poppins", size=36, weight="bold")
         self.buttonFont = font.Font(family="Poppins", size=18, weight="bold")
+    #Function to generate the sign-in/sign-up window
+    def UserSignWindow(self):
+        #Config of the window
+        self.startingWindow = tk.Tk()
+        #Vars to store username and password
+        self.userName = tk.StringVar()
+        self.userPass = tk.StringVar()
+        self.email = tk.StringVar()
+        #Window configs
+        self.startingWindow.title("Sign in or Sign up")
+        self.startingWindow.geometry(f"400x200+{self.screenMiddleX}+{self.screenMiddleY}")
+        self.startingWindow.resizable(False, False)
+        #SignUp Function
+        def SignUp():
+            if self.userName == "" or self.userPass == "" or self.email == "":
+                messagebox.showerror("Invalid entry", "One or more fields are incomplete. Unable to sign up")
+            elif 
+        #Init fonts
+        self.FontMaker()
+        # Create a frame to center all widgets
+        formFrame = tk.Frame(self.startingWindow)
+        formFrame.grid(row=0, column=0, padx=20, pady=(10, 10))  # smaller top/bottom margins
+        # Center the frame in the window
+        self.startingWindow.grid_rowconfigure(0, weight=1)
+        self.startingWindow.grid_columnconfigure(0, weight=1)
+        # Define a larger bold font
+        labelFont = font.Font(family="Poppins", size=11, weight="bold")
+        # Email Entry
+        emailLabel = tk.Label(formFrame, text="Email", font=labelFont)
+        emailLabel.grid(column=0, row=0, pady=(10, 5), padx=10, sticky="e")
+        emailEntry = tk.Entry(formFrame, textvariable=self.email, width=30)
+        emailEntry.grid(column=1, row=0, pady=(10, 5), padx=10)
+        # Username Entry
+        userNameEntryLabel = tk.Label(formFrame, text="Username", font=labelFont)
+        userNameEntryLabel.grid(column=0, row=1, pady=(5, 5), padx=10, sticky="e")
+        userNameEntry = tk.Entry(formFrame, textvariable=self.userName, width=30)
+        userNameEntry.grid(column=1, row=1, pady=(5, 5), padx=10)
+        # Password Entry
+        userNamePassLabel = tk.Label(formFrame, text="Password", font=labelFont)
+        userNamePassLabel.grid(column=0, row=2, pady=(5, 5), padx=10, sticky="e")
+        userPassEntry = tk.Entry(formFrame, textvariable=self.userPass, show='*', width=30)
+        userPassEntry.grid(column=1, row=2, pady=(5, 10), padx=10)
+        # Sign Up and Quit Buttons
+        buttonFrame = tk.Frame(formFrame)
+        buttonFrame.grid(column=0, row=3, columnspan=2, pady=(10, 5))
+        signUpButton = tk.Button(buttonFrame, border=5, text="Sign Up", width=12, command=self.SignUp)
+        signUpButton.pack(side="right", padx=10)
+        quitButton = tk.Button(buttonFrame, border=5, text="Quit", width=12, command=self.ExitProgram)
+        quitButton.pack(side="left", padx=10)
+        #Inits the starting window
+        self.startingWindow.mainloop()
     #Function to create the main menu window
     def MainMenuWindow(self):
         #Opens the mainmenu window
-        self.mainMenu = tk.Tk()
-        self.mainMenu.title("StudyApp")
-        self.mainMenu.geometry(f"{self.windowWidth}x{self.windowHeight}+{self.screenMiddleX}+{self.screenMiddleY}")
-        self.mainMenu.resizable(True, True)
-
-        #Init fonts
-        self.FontMaker()
+        self.NewWindow("StudyApp")
+        #Renames the var
+        self.mainMenu = self.newWindow
+        #Appends the window to the open windows list
+        self.openWindows.append(self.mainMenu)
 
         title = tk.Label(self.mainMenu, text="StudyApp", font=self.titleFont)
         title.pack(pady = (30, 20))
@@ -122,8 +180,6 @@ class StudyAppClient:
         self.settingsButton.pack(pady=10)
         self.exitButton = tk.Button(self.mainMenu, height=1, width=12, text="Exit", font=self.buttonFont, border=5, command=lambda: self.ExitProgram())
         self.exitButton.pack(pady=10)
-
-        self.mainMenu.mainloop()
     #Function to return and open the main menu window again
     def ReturnToMainMenu(self):
         #Closes all currently open windows
@@ -131,7 +187,7 @@ class StudyAppClient:
         #Clear the currently open windows list
         self.openWindows.clear()
         #Reopens the main menu window
-        self.mainMenu.deiconify()
+        self.MainMenuWindow()
     #Function to create the dashboard window
     def DashboardWindow(self):
         #Init page
@@ -246,7 +302,7 @@ class StudyAppClient:
         self.excelButton.grid(sticky="ew", row=0, column=0)
     #Function to exit the whole program
     def ExitProgram(self):
-        self.mainMenu.destroy()
+        self.startingWindow.destroy()
 #Starts running the program
 if __name__ == "__main__":
     StudyAppClient()
